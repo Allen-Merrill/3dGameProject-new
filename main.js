@@ -1,7 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
 import { Player } from './game/player.js';
 import { createPath } from './game/path.js';
-import { isBuildable } from './game/tower.js';
+//import { isBuildable } from './game/tower.js';
+import { Enemy } from './game/enemy.js';
 
 // Constants
 const TILE_SIZE = 1;
@@ -42,19 +43,21 @@ const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.position.y = -0.5; // so top of ground is at y=0
 scene.add(ground);
 
-const {pathTiles, tiles, gridArray} = createPath(scene);
+const {pathTiles, tiles, grid, pathCoords} = createPath(scene);
 
-// Extract path coordinates for potential use (e.g., enemy spawning)
-const pathCoords = [];
-for (let y = 0; y < tiles.length; y++) {
-  for (let x = 0; x < tiles[y].length; x++) {
-    if (tiles[y][x] === 1) pathCoords.push({ x, y });
+// Use pathCoords directly for enemy movement
+// Enemy wave logic
+const enemies = [];
+function spawnWave(numEnemies) {
+  for (let i = 0; i < numEnemies; i++) {
+    const enemy = new Enemy(pathCoords, scene);
+    // Stagger spawn by offsetting their starting progress
+    enemy.progress = -i * 0.5;
+    enemies.push(enemy);
   }
 }
-//need to add some substance to the map (trees, rocks, castle, etc.)
-// Grid helper (optional)
-const grid = new THREE.GridHelper(GRID_SIZE, GRID_SIZE);
-scene.add(grid);
+
+spawnWave(5); // Spawn 5 enemies for the wave
 
 // Player
 const player = new Player();
@@ -77,6 +80,15 @@ function handlePlayerMovement() {
 function animate() {
   requestAnimationFrame(animate);
   handlePlayerMovement();
+  // Update enemies
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    enemies[i].update();
+    // Remove enemy if it reached the end
+    if (enemies[i].currentStep >= enemies[i].pathCoords.length - 1) {
+      scene.remove(enemies[i].mesh);
+      enemies.splice(i, 1);
+    }
+  }
   renderer.render(scene, camera);
 }
 

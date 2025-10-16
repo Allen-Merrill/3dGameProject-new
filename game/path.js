@@ -9,6 +9,7 @@ export function createPath(scene) {
     const grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
     const tiles = [];
     const pathTiles = [];
+    const pathCoords = [];
 
     // --- Path state ---
     // curX, curY: current position of the path
@@ -23,6 +24,7 @@ export function createPath(scene) {
 
     // Mark starting tile as path
     grid[curY][curX] = 1;
+    pathCoords.push({ x: curX, y: curY });
 
     // === Path generation ===
     // The path moves down until it reaches the bottom row,
@@ -38,6 +40,7 @@ export function createPath(scene) {
 
         // Mark the new tile as path
         grid[curY][curX] = 1;
+        pathCoords.push({ x: curX, y: curY });
     }
 
     // === Drawing tiles ===
@@ -110,6 +113,6 @@ export function createPath(scene) {
         }
     }
 
-    // Return all path and tile meshes, and the grid
-    return { pathTiles, tiles, grid };
+    // Return all path and tile meshes, the grid, and the ordered path coordinates
+    return { pathTiles, tiles, grid, pathCoords };
 }
