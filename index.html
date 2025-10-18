@@ -12,6 +12,13 @@
         <button id="startRound">Start Round</button>
         <div id="waveProgress" style="display:inline-block; vertical-align:middle; margin-left:12px;">
           <div id="waveProgressBar"></div>
+          </div>
+
+          <div id="towerControls">
+            <button id="selectHealer">Healer Tower</button>
+            <button id="selectMage">Mage Tower</button>
+            <button id="selectArcher">Archer Tower</button>
+          </div>
         </div>
       </div>
       <!-- Crosshair for first-person -->
@@ -26,8 +33,7 @@
           "OrbitControls": "https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js"
         }
       }
-      </script>
-    <canvas id="gameCanvas"></canvas>
+    </script>
     <!-- main.js is now a module -->
     <script type="module" src="main.js"></script>
 </body>
