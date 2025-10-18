@@ -1,12 +1,37 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
 import { Player } from './game/player.js';
 import { createPath } from './game/path.js';
-//import { isBuildable } from './game/tower.js';
 import { Enemy } from './game/enemy.js';
+import { HealerTower, MageTower, ArcherTower } from './game/tower.js';
+
+// Tower selection
+let selectedTowerType = null; // "Healer", "Mage", "Archer"
+let towers = []; // store all placed towers
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("selectHealer").addEventListener("click", () => {
+    selectedTowerType = "Healer";
+    console.log("Healer tower selected");
+  });
+
+  document.getElementById("selectMage").addEventListener("click", () => {
+    selectedTowerType = "Mage";
+    console.log("Mage tower selected");
+  });
+
+  document.getElementById("selectArcher").addEventListener("click", () => {
+    selectedTowerType = "Archer";
+    console.log("Archer tower selected");
+  });
+});
+
 
 // Constants
 const TILE_SIZE = 1;
 const GRID_SIZE = 50;
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
 
 // Scene
 const scene = new THREE.Scene();
@@ -92,7 +117,6 @@ const canvas = document.getElementById('gameCanvas');
 const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
@@ -161,8 +185,6 @@ function updateWaveUI() {
   }
 }
 
-
-
 // need to add some substance to the map (trees, rocks, castle, etc.)
 function addDecorations(scene, grid) {
   const treeGeometry = new THREE.ConeGeometry(2, 5, 12);
@@ -170,15 +192,40 @@ function addDecorations(scene, grid) {
   const rockGeometry = new THREE.DodecahedronGeometry(0.8);
   const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
 
+  const avoidRadius = 3; // tiles away from path to avoid
+
+  // Collect all path coordinates
+  const pathTiles = [];
+  for (let y = 0; y < grid.length; y++) {
+    for (let x = 0; x < grid[y].length; x++) {
+      if (grid[y][x] === 1) {
+        pathTiles.push({ x, y });
+      }
+    }
+  }
+
+  // Helper to check if (x, y) is too close to a path tile
+  function isNearPath(x, y) {
+    for (const tile of pathTiles) {
+      const dx = x - tile.x;
+      const dy = y - tile.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= avoidRadius) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   for (let y = 0; y < grid.length; y++) {
     for (let x = 0; x < grid[y].length; x++) {
       // Skip path tiles
       if (grid[y][x] === 1) continue;
+      if (isNearPath(x, y)) continue;
 
       const rand = Math.random();
       if (rand < 0.05) {
         const tree = new THREE.Mesh(treeGeometry, treeMaterial);
-        tree.position.set(x - GRID_SIZE / 2, 0.75, y - GRID_SIZE / 2);
+        tree.position.set((x - GRID_SIZE/2) * TILE_SIZE + TILE_SIZE/2, 0.75, (y - GRID_SIZE/2) * TILE_SIZE + TILE_SIZE/2);
         scene.add(tree);
       } else if (rand < 0.08) {
         const rock = new THREE.Mesh(rockGeometry, rockMaterial);
@@ -612,6 +659,85 @@ function handlePlayerMovement() {
   if (keys['d'] || keys['ArrowRight']) player.move('right');
 }
 
+//Towers
+let towersBuiltThisRound = 0;
+let towerLimitPerRound = 1;
+
+
+function buildTower(type, x, y) {
+  if (towersBuiltThisRound >= towerLimitPerRound) return; // limit per round
+  type = type.toLowerCase(); // normalize
+
+  let tower;
+  switch(type) {
+    case "healer": tower = new HealerTower(x, y, scene); break;
+    case "mage":   tower = new MageTower(x, y, scene); break;
+    case "archer": tower = new ArcherTower(x, y, scene); break;
+    default: return;
+  }
+
+  towers.push(tower);
+  towersBuiltThisRound++;
+}
+
+function getGridCoordsFromClick(mouseX, mouseY) {
+  // Use raycasting in THREE.js
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  mouse.x = (mouseX / window.innerWidth) * 2 - 1;
+  mouse.y = -(mouseY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObject(ground);
+  if (intersects.length > 0) {
+    const point = intersects[0].point;
+    const x = Math.round(point.x + GRID_SIZE/2);
+    const y = Math.round(point.z + GRID_SIZE/2);
+    buildTower(selectedTowerType, x, y);
+    selectedTowerType = null;
+  }
+  return null;
+}
+
+window.addEventListener("click", (event) => {
+  if (!selectedTowerType) return; if (towersBuiltThisRound >= towerLimitPerRound) {
+    console.log("Tower limit reached for this round");
+    return;
+  }
+
+  // Convert mouse coordinates to normalized device coordinates (-1 to +1)
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Assuming 'ground' is your THREE.Mesh plane
+  const intersects = raycaster.intersectObject(ground);
+  if (intersects.length > 0) {
+      const point = intersects[0].point;
+
+      // Snap to grid
+      const x = Math.round(point.x + GRID_SIZE/2);
+      const y = Math.round(point.z + GRID_SIZE/2);
+
+      let tower;
+      if (selectedTowerType === "Healer") {
+          tower = new HealerTower(x, y, scene);
+      } else if (selectedTowerType === "Mage") {
+          tower = new MageTower(x, y, scene);
+      } else if (selectedTowerType === "Archer") {
+          tower = new ArcherTower(x, y, scene);
+      }
+
+      towers.push(tower);
+      towersBuiltThisRound++; // increment here!
+      selectedTowerType = null; // reset after placing
+      console.log(`${tower.constructor.name} placed at (${x},${y})`);
+  }
+});
+
+
 // Animate
 function animate() {
   requestAnimationFrame(animate);
@@ -655,10 +781,18 @@ function animate() {
     if (waveProgressBar) waveProgressBar.style.width = '0%';
     updateWaveUI();
     setUsingTopDown(true);
+    towersBuiltThisRound = 0;
   }
+
   // Choose the active camera each frame
   const activeCam = usingTopDown ? camera : fpCamera;
   renderer.render(scene, activeCam);
+
+// Update towers
+towers.forEach(tower => {
+  if (tower instanceof HealerTower) tower.update(player);
+  else tower.update(enemies);
+  });
 }
 
 animate();
