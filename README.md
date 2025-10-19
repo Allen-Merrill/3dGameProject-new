@@ -1,86 +1,97 @@
 # 3dGameProject
 
-Top-down tower-defense / small action hybrid built with Three.js and vanilla JavaScript.
+A compact, browser-based hybrid of tower-defense and small-action gameplay built with Three.js and vanilla ES modules.
 
 Overview
 --------
-Defend your castle from waves of enemies. You can place towers between waves, pick up loot dropped by enemies, and apply upgrades to either the player or individual towers. The game supports a campaign-style win condition (beat round 20) and an Endless Mode for continuing past that point.
+Defend your castle from waves of enemies by placing towers, fighting with a first-person melee weapon, and collecting loot that upgrades your player or individual towers. The game supports a campaign win (clear round 20) and an Endless Mode to continue indefinitely.
 
-Rules
------
-- Each wave spawns a number of enemies that follow the path to your castle. If an enemy reaches the end, the castle loses 1 health.
-- If castle health reaches 0 you lose and are returned to the menu.
-- Clearing wave 20 normally triggers a Victory overlay. If Endless Mode is enabled, waves continue past 20.
-- Towers cost gold to build. Gold is awarded by killing enemies.
-- Loot/powerups may be dropped by enemies. Some apply immediately to the player, others are stored in your inventory for application to towers.
+Key features
+- Top-down and first-person camera modes (toggle with `C`). First-person enables melee combat.
+- Placed towers (Healer, Mage, Archer) that can be built between waves using gold.
+- Loot system with persistent inventory: some loot applies immediately to the player, some are stored in inventory and can be applied to specific towers.
+- Mouse:
+  - Left click (top-down): place the selected tower (when a tower type is selected).
+-----------
+- HUD: shows Gold, Castle health, Wave number and Enemies remaining.
+- Endless Mode indicator: shows "Endless ON" when the mode is active.
+
+Tower types
+-----------
+- Healer Tower
+  - Role: sustain/support.
+  - What it does: periodically heals the player (and nearby allies) and can help the player survive longer in first-person combat.
+  - Usage: place when you expect to play aggressively or when the castle needs sustain.
+
+- Mage Tower
+  - Role: single-target burst damage.
+  - What it does: deals high damage to single targets at range; especially effective against high-health enemies and loot carriers.
+  - Usage: build against tanky enemies or to quickly remove priority targets.
+
+- Archer Tower
+  - Role: consistent DPS and crowd control.
+  - What it does: fast shots with moderate damage and good range; ideal for thinning groups of enemies.
+  - Usage: use to cover long corridors and handle many weaker enemies.
 
 Powerups (Loot)
-----------------
-Loot definitions are in `game/loot.js`. Current notable powerups:
+---------------
+Loot definitions live in `game/loot.js` under `LOOT_DEFS`. Each entry defines the ID, friendly name, target (player or `tower_individual`), weight (rarity) and effect.
 
 - `gold_hoard` (Gold Hoard Token)
-	- Effect: grants an additive gold bonus (each token adds +20% in raw terms).
-	- The game applies diminishing returns when awarding gold. The effective multiplier is computed by a diminishing formula and capped at 200% (i.e., at most double gold). The effective multiplier is shown in the UI under Applied Upgrades when active.
-	- Stored under persistent upgrades; multiple tokens stack but are subject to diminishing returns and a hard cap.
+  - Target: player (persistent)
+  - Effect: increases gold awarded from kills by contributing to a stacked multiplier. Uses diminishing returns and a hard cap (see `computeGoldMultiplier()` in `game/loot.js`).
 
 - `sharpened_blade` (Sharpened Blade)
-	- Effect: increases player melee damage (permanent; stacks up to the per-item cap).
+  - Target: player (persistent)
+  - Effect: increases player melee damage when applied (persists and stacks up to defined caps).
 
-- `powercore_module` and `overclock_chip`
-	- Tower-targeted upgrades. Apply them to an individual tower (from the inventory modal) to permanently increase that tower's damage or fire rate. Tower caps apply per definition.
+- Tower modules (e.g. `powercore_module`, `overclock_chip`)
+  - Target: `tower_individual`
+  - Effect: apply to a single tower to improve damage, cooldown, or other stats. Must be applied from the inventory modal and are subject to per-tower caps.
 
-Towers
-------
-There are three tower classes (see `game/tower.js`):
+Pickup behavior
+---------------
+- Tower-targeted pickups are stored immediately in the player's inventory with a stable `uid` to prevent loss during modal interactions. Opening the apply modal reserves that UID until the modal is closed.
 
-- Healer Tower — supports allied recovery.
-- Mage Tower — high single-target damage and ranged (recently buffed).
-- Archer Tower — standard DPS tower.
 
-Each tower type has a gold cost (configured in `game/constants.js`) and may be upgraded with loot applied to that tower.
-
-Controls
---------
-- Mouse:
-	- Left click in top-down mode to place a selected tower (when you have selected a tower type).
-	- Left click in first-person mode swings the player's weapon (melee).
-- Keyboard:
-	- C — Toggle camera between top-down and first-person.
-	- R or Enter — Start the next round (when not already active).
-	- Tab — Pause / Resume the game (also available as the Pause button in the UI). While paused the game world freezes and a pause menu appears with Resume and End/Reset options.
-
-UI Notes
---------
-- Inventory: picked-up tower-targeted loot is stored in your inventory with a unique id (to avoid accidental loss). Open the inventory to Apply or Drop items.
-- Applied Upgrades panel shows persistent player upgrades and the effective gold multiplier when Gold Hoard tokens are active.
-- The Start Round and Pause buttons show their keyboard shortcuts in the label (e.g., Pause (Tab)).
-- Endless Mode: toggle the "Endless Mode" checkbox to allow continuing past round 20. The on-screen "Endless ON" indicator shows when enabled.
-
-Dev / Run instructions (VS Code Live Server)
-------------------------------------------
-1. Open this project folder (`3dGameProject`) in Visual Studio Code.
-2. If you don't already have Live Server installed, install the extension named "Live Server" (by Ritwick Dey) from the Extensions view.
-3. Start Live Server:
-	 - Right-click `index.html` in the Explorer and choose "Open with Live Server", or
-	 - Press F1 and run the "Live Server: Open with Live Server" command, or
-	 - Click the "Go Live" button in the status bar.
-4. A browser should open at `http://127.0.0.1:5500/` (or another port). The game is loaded as an ES module and will run in the browser.
-
-Notes for development
----------------------
-- The codebase uses vanilla ES modules and Three.js for rendering. Major game logic lives in:
-	- `main.js` — game loop, UI wiring, wave logic, inventory modal, and scene setup.
-	- `game/loot.js` — loot definitions and persistence helpers.
-	- `game/tower.js` — tower classes and behaviors.
-	- `game/enemy.js` — enemy behavior and coin/loot drops.
-- Persistent player upgrades and inventory are stored in `localStorage` under a storage key defined in `game/constants.js`.
-- If you change module imports or add new files, ensure the import paths are correct (browser module loader requires valid URLs/paths).
-
-Testing / Tuning
-----------------
-- To tune drop rates, check `main.js` (wave spawn logic) and `game/loot.js` (loot weights). A weighted picker was implemented for loot selection.
-- To tune the economy, adjust `TOWER_COSTS` and `STARTING_GOLD` in `game/constants.js`.
-
-Feedback or changes
+-----------------
+- `index.html` — main HTML and UI skeleton.
+- `main.js` — game loop, scene setup, UI wiring, wave spawning and core gameplay logic.
+- `game/constants.js` — centralized constants: grid/tile size, UI visuals, tower defaults/costs, attack constants.
+- `game/loot.js` — LOOT_DEFS, weighted selection, inventory helpers, persistence helpers and gold multiplier logic.
+- `game/tower.js` — Tower classes (Healer, Mage, Archer) and per-tower behavior.
+- `game/enemy.js` — Enemy behavior, health, loot/coin drops and attack logic.
+Persistence & state
 -------------------
-If you want different diminishing-return math, different caps, a visible debug overlay for drop-rates, or extra UI polish for the pause/win overlays, tell me what you'd like and I can implement it.
+- Persistent player upgrades, inventory and per-tower applied upgrades are stored in `localStorage` under the key in `game/constants.js`.
+- Inventory entries use stable `uid` strings at pickup time to avoid race conditions (for example when opening a modal while picking up a second item).
+Balance, economy and tuning
+---------------------------
+- Tower costs and starting gold are controlled in `game/constants.js` via `TOWER_COSTS` and `STARTING_GOLD`.
+- Gold-hoard tokens are implemented as stacking powerups that feed into a diminishing-returns formula (see `game/loot.js` → `computeGoldMultiplier()`) and cap at 2× effective gold.
+- Recent balance notes:
+  - The Mage tower has been buffed for stronger single-target damage.
+  - Player base melee damage was nerfed slightly to balance sword power relative to towers.
+
+Recent behavior & UI changes
+---------------------------
+- Inventory now persists pickups immediately with unique UIDs so items are not lost if the player picks up another item while a modal is open.
+- Player sword was replaced by a grouped blade+hilt mesh parented to the first-person camera for correct visibility and animation. Sword swings award coins/loot identically to tower kills.
+- Ghost placement visuals: range circle opacity and valid/invalid color values were adjusted for better visibility; the valid green was darkened for contrast.
+- Endless indicator styling and behavior: the onscreen "Endless ON" label is styled reddish and updates reliably when toggled.
+- Toasts and modal/applied/inventory text colors were adjusted for consistent readability across dark UIs.
+
+Running locally (quick)
+-----------------------
+1. Open the `3dGameProject` folder in VS Code.
+2. Use Live Server (or any static file server) to serve `index.html` so ES module imports load correctly.
+   - Live Server extension (right-click `index.html` → "Open with Live Server").
+3. Open the page in a modern browser (Chrome recommended for development). Use the Developer Console for logs.
+
+Development notes
+-----------------
+- Editing files: keep import paths relative and valid for browser ES modules.
+- Rendering notes: the player's sword is intentionally rendered last (high `renderOrder` and depth writes disabled) so it stays visible in first-person.
+- If you change visual constants, update `game/constants.js` and test in both camera modes.
+
+

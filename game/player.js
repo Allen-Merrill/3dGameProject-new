@@ -21,20 +21,31 @@ export class Player {
          this.sword = new THREE.Group();
          // Blade: a thin long box
          const bladeGeo = new THREE.BoxGeometry(0.06, 0.02, 1.1);
-         const bladeMat = new THREE.MeshStandardMaterial({ color: 0xeeeeff, metalness: 0.9, roughness: 0.05, emissive: 0x111111 });
-         bladeMat.depthTest = false; // render on top to avoid near-plane clipping issues
-         bladeMat.side = THREE.DoubleSide;
+         const bladeMat = new THREE.MeshStandardMaterial({
+             color: 0xeeeeff,
+             metalness: 0.9,
+             roughness: 0.05,
+             emissive: 0x111111,
+             transparent: true,
+             depthWrite: false,
+             depthTest: false,
+             side: THREE.DoubleSide
+         });
          const blade = new THREE.Mesh(bladeGeo, bladeMat);
          blade.position.set(0, 0, -0.55); // blade extends forward from hilt
          // Hilt: small cylinder
          const hiltGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.18, 8);
-         const hiltMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.4, roughness: 0.6 });
-         hiltMat.depthTest = false;
+         const hiltMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.4, roughness: 0.6, transparent: true, depthWrite: false, depthTest: false });
          const hilt = new THREE.Mesh(hiltGeo, hiltMat);
          hilt.rotation.x = Math.PI / 2;
          hilt.position.set(0, -0.02, 0.05);
+         blade.renderOrder = 9999;
+         hilt.renderOrder = 9999;
          this.sword.add(blade);
          this.sword.add(hilt);
+         // ensure group renders after world geometry
+         this.sword.renderOrder = 9999;
+         this.sword.traverse((c) => { if (c.isMesh) c.renderOrder = 9999; });
          this.camera.add(this.sword);
          // position the whole sword relative to the camera (first-person hold)
          // move slightly more forward so it's comfortably visible in most FOVs
