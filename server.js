@@ -23,6 +23,9 @@ app.use(express.static(__dirname));
 // Game state manager
 const gameState = new GameState();
 
+// Ready system - track which players are ready
+const readyPlayers = new Set();
+
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
   
@@ -86,9 +89,30 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Handle starting a round
-  socket.on('startRound', () => {
-    if (!gameState.roundInProgress) {
+  // Handle ready toggle (vote-based system)
+  socket.on('toggleReady', (data) => {
+    if (data.isReady) {
+      readyPlayers.add(socket.id);
+    } else {
+      readyPlayers.delete(socket.id);
+    }
+    
+    const totalPlayers = gameState.players.size;
+    const readyCount = readyPlayers.size;
+    
+    // Broadcast ready status to all players
+    io.emit('readyStatusChanged', {
+      playerId: socket.id,
+      isReady: data.isReady,
+      readyCount: readyCount,
+      totalPlayers: totalPlayers
+    });
+    
+    // If all players are ready, start the round
+    if (readyCount === totalPlayers && totalPlayers > 0 && !gameState.roundInProgress) {
+      // Clear ready status
+      readyPlayers.clear();
+      
       gameState.startRound();
       io.emit('roundStarted', {
         wave: gameState.wave,
@@ -159,6 +183,7 @@ io.on('connection', (socket) => {
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
+    readyPlayers.delete(socket.id);
     gameState.removePlayer(socket.id);
     socket.broadcast.emit('playerLeft', { playerId: socket.id });
   });

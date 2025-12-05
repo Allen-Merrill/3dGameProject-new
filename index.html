@@ -8,6 +8,10 @@
 <body>
     <div id="ui">
   💎 Gold: <span id="gold">100</span> | 🏰 Castle: <span id="castleHealth">10</span> | 🧟 Wave: <span id="wave">1</span> | Enemies: <span id="enemiesRemaining">0</span>
+        <!-- Multiplayer connection status -->
+        <span id="multiplayerStatus" style="margin-left:12px; display:none;">
+          🌐 <span id="connectionStatus">Connecting...</span>
+        </span>
         <button id="cameraToggle">Toggle Camera (C)</button>
         <button id="startRound">Start Round (R)</button>
   <label style="margin-left:8px; font-size:0.9em;"><input type="checkbox" id="endlessModeCheckbox"> Endless Mode</label>
@@ -81,9 +85,18 @@
       <div id="startMenuContent">
         <h1>Defend the Castle</h1>
         <p>Protect your castle from incoming enemies. Upgrades reset each new game.</p>
-        <button id="startGameBtn">Start Game</button>
+        <button id="startGameBtn">Start Game (Single Player)</button>
+        <button id="joinMultiplayerBtn" style="margin-top:10px;">Join Multiplayer Game</button>
+        <div id="serverUrlInput" style="margin-top:10px; display:none;">
+          <input type="text" id="serverUrl" placeholder="Server URL" value="http://localhost:3000" style="width:250px; padding:5px;">
+          <button id="connectBtn">Connect</button>
+          <button id="cancelMultiplayerBtn">Cancel</button>
+        </div>
       </div>
     </div>
+    
+      <!-- Socket.io client library (served by the server) -->
+      <script src="/socket.io/socket.io.js"></script>
     
       <!-- Import map to load Three.js as an ES module -->
       <script type="importmap">

@@ -6,7 +6,13 @@ import { LOOT_DEFS, Loot, loadPersistentState, savePersistentState, applyLootToP
 import { HealerTower, MageTower, ArcherTower, highlightTowerById as towerHighlight, selectTowerById as towerSelect, clearTowerSelection as towerClear } from './game/tower.js';
 import { GRID_SIZE, TILE_SIZE, PICKUP_RANGE, GHOST_OPACITY_VALID, GHOST_OPACITY_INVALID, RANGE_INDICATOR_COLOR_VALID, RANGE_INDICATOR_COLOR_INVALID, RANGE_INDICATOR_OPACITY, TOWER_DEFAULTS, TOAST_DURATION_MS, TOWER_COSTS, STARTING_GOLD, ATTACK_RANGE, ATTACK_DAMAGE, ATTACK_COOLDOWN } from './game/constants.js';
 import { showToast } from './ui/toast.js';
+import { MultiplayerClient } from './game/multiplayerClient.js';
 // consolidated above
+
+// Multiplayer client instance
+let multiplayerClient = null;
+let isMultiplayer = false;
+let otherPlayerMeshes = new Map(); // playerId -> THREE.Mesh
 
 // Tower selection
 let selectedTowerType = null; // "Healer", "Mage", "Archer"
@@ -829,6 +835,81 @@ function startGame() {
 
 if (startGameBtn) startGameBtn.addEventListener('click', () => startGame());
 
+// Multiplayer menu button handlers
+const joinMultiplayerBtn = document.getElementById('joinMultiplayerBtn');
+const serverUrlInput = document.getElementById('serverUrlInput');
+const connectBtn = document.getElementById('connectBtn');
+const cancelMultiplayerBtn = document.getElementById('cancelMultiplayerBtn');
+const serverUrlField = document.getElementById('serverUrl');
+const multiplayerStatusEl = document.getElementById('multiplayerStatus');
+const connectionStatusEl = document.getElementById('connectionStatus');
+
+if (joinMultiplayerBtn) {
+  joinMultiplayerBtn.addEventListener('click', () => {
+    // Show server URL input
+    if (serverUrlInput) serverUrlInput.style.display = 'block';
+    if (joinMultiplayerBtn) joinMultiplayerBtn.style.display = 'none';
+    if (startGameBtn) startGameBtn.style.display = 'none';
+  });
+}
+
+if (cancelMultiplayerBtn) {
+  cancelMultiplayerBtn.addEventListener('click', () => {
+    // Hide server URL input
+    if (serverUrlInput) serverUrlInput.style.display = 'none';
+    if (joinMultiplayerBtn) joinMultiplayerBtn.style.display = 'block';
+    if (startGameBtn) startGameBtn.style.display = 'block';
+  });
+}
+
+if (connectBtn) {
+  connectBtn.addEventListener('click', async () => {
+    const serverUrl = serverUrlField ? serverUrlField.value : 'http://localhost:3000';
+    
+    // Show connecting status
+    if (multiplayerStatusEl) multiplayerStatusEl.style.display = 'inline-block';
+    if (connectionStatusEl) {
+      connectionStatusEl.textContent = 'Connecting...';
+      connectionStatusEl.className = '';
+    }
+    
+    try {
+      const success = await initMultiplayer(serverUrl);
+      if (success) {
+        // Hide start menu
+        if (startMenu) startMenu.style.display = 'none';
+        resetGameState();
+        roundActive = false;
+        setUsingTopDown(true);
+        
+        // Update connection status
+        if (connectionStatusEl) {
+          connectionStatusEl.textContent = 'Connected';
+          connectionStatusEl.className = 'connected';
+        }
+      } else {
+        // Show error
+        if (connectionStatusEl) {
+          connectionStatusEl.textContent = 'Failed to connect';
+          connectionStatusEl.className = 'disconnected';
+        }
+        setTimeout(() => {
+          if (multiplayerStatusEl) multiplayerStatusEl.style.display = 'none';
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Connection error:', error);
+      if (connectionStatusEl) {
+        connectionStatusEl.textContent = 'Connection error';
+        connectionStatusEl.className = 'disconnected';
+      }
+      setTimeout(() => {
+        if (multiplayerStatusEl) multiplayerStatusEl.style.display = 'none';
+      }, 3000);
+    }
+  });
+}
+
 // Now that canvas, renderer and player exist, wire up UI elements and events
 cameraToggleBtn = document.getElementById('cameraToggle');
 startRoundBtn = document.getElementById('startRound');
@@ -1472,6 +1553,16 @@ function buildTower(type, x, y) {
   if (towersBuiltThisRound >= towerLimitPerRound) return; // limit per round
   type = type.toLowerCase(); // normalize
 
+  // In multiplayer mode, send request to server instead of building directly
+  if (isMultiplayer && multiplayerClient) {
+    const worldX = (x - GRID_SIZE/2) + 0.5;
+    const worldZ = (y - GRID_SIZE/2) + 0.5;
+    const typeCap = type.charAt(0).toUpperCase() + type.slice(1); // Capitalize for server
+    multiplayerClient.sendPlaceTower(typeCap, { x: worldX, y: 0.5, z: worldZ });
+    return; // Server will handle validation and broadcast
+  }
+
+  // Single-player logic
   // Check cost
   const cost = TOWER_COSTS[type] || 0;
   if (typeof gold !== 'number' || gold < cost) {
@@ -1495,6 +1586,28 @@ function buildTower(type, x, y) {
   showToast(`Built ${type} for ${cost}g`);
   // refresh tower button states
   try { refreshTowerButtons(); } catch (e) {}
+  return tower;
+}
+
+// Helper to create tower from server data (multiplayer)
+function createTowerFromServer(towerId, type, position) {
+  // Convert world position back to grid
+  const gridX = Math.round(position.x + GRID_SIZE/2);
+  const gridY = Math.round(position.z + GRID_SIZE/2);
+  
+  let tower;
+  const typeLower = type.toLowerCase();
+  switch(typeLower) {
+    case "healer": tower = new HealerTower(gridX, gridY, scene); break;
+    case "mage":   tower = new MageTower(gridX, gridY, scene); break;
+    case "archer": tower = new ArcherTower(gridX, gridY, scene); break;
+    default: return;
+  }
+  
+  // Store tower with server ID for future reference
+  tower.serverId = towerId;
+  towers.push(tower);
+  towersBuiltThisRound++;
   return tower;
 }
 
@@ -1579,6 +1692,9 @@ function animate() {
   player.update(delta);
   player.updateHealthBar();
   updateClouds(delta);
+  
+  // Send position updates to server in multiplayer
+  updateMultiplayerPosition();
 
   // Check for player death
   if (player.health <= 0 && roundActive) {
@@ -1887,3 +2003,201 @@ function refreshTowerButtons() {
 }
 // initial refresh
 refreshTowerButtons();
+
+// ========== MULTIPLAYER FUNCTIONS ==========
+
+// Create a visual mesh for another player
+function createOtherPlayerMesh(playerId, color) {
+  const geometry = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8);
+  const material = new THREE.MeshStandardMaterial({ color: color });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(0, 0.9, 0);
+  scene.add(mesh);
+  
+  // Add a label above the player
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = 256;
+  canvas.height = 64;
+  context.font = 'Bold 32px Arial';
+  context.fillStyle = 'white';
+  context.textAlign = 'center';
+  context.fillText(`Player ${playerId.substring(0, 6)}`, 128, 40);
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.scale.set(2, 0.5, 1);
+  sprite.position.set(0, 1.5, 0);
+  mesh.add(sprite);
+  
+  otherPlayerMeshes.set(playerId, mesh);
+  return mesh;
+}
+
+// Remove other player mesh
+function removeOtherPlayerMesh(playerId) {
+  const mesh = otherPlayerMeshes.get(playerId);
+  if (mesh) {
+    scene.remove(mesh);
+    otherPlayerMeshes.delete(playerId);
+  }
+}
+
+// Initialize multiplayer connection
+async function initMultiplayer(serverUrl = 'http://localhost:3000') {
+  try {
+    multiplayerClient = new MultiplayerClient();
+    
+    // Set up callbacks
+    multiplayerClient.onConnectionChange = (connected) => {
+      const statusEl = document.getElementById('connectionStatus');
+      const multiplayerStatusEl = document.getElementById('multiplayerStatus');
+      
+      if (connected) {
+        showToast('Connected to multiplayer server!');
+        if (statusEl) {
+          statusEl.textContent = 'Connected';
+          statusEl.className = 'connected';
+        }
+        if (multiplayerStatusEl) multiplayerStatusEl.style.display = 'inline-block';
+      } else {
+        showToast('Disconnected from server');
+        if (statusEl) {
+          statusEl.textContent = 'Disconnected';
+          statusEl.className = 'disconnected';
+        }
+      }
+    };
+    
+    multiplayerClient.onPlayerJoined = (playerId, color) => {
+      console.log('Player joined:', playerId);
+      createOtherPlayerMesh(playerId, color);
+      showToast(`Player ${playerId.substring(0, 6)} joined`);
+    };
+    
+    multiplayerClient.onPlayerLeft = (playerId) => {
+      console.log('Player left:', playerId);
+      removeOtherPlayerMesh(playerId);
+      showToast(`Player ${playerId.substring(0, 6)} left`);
+    };
+    
+    multiplayerClient.onPlayerMoved = (playerId, position, rotation) => {
+      const mesh = otherPlayerMeshes.get(playerId);
+      if (mesh) {
+        mesh.position.set(position.x, position.y, position.z);
+        mesh.rotation.set(rotation.x, rotation.y, rotation.z);
+      }
+    };
+    
+    multiplayerClient.onTowerPlaced = (towerId, type, position, placedBy) => {
+      console.log('Tower placed by server:', towerId, type);
+      const tower = createTowerFromServer(towerId, type, position);
+      if (tower) {
+        showToast(`${type} tower placed!`);
+      }
+    };
+    
+    multiplayerClient.onGoldUpdate = (newGold) => {
+      gold = newGold;
+      if (goldEl) goldEl.textContent = gold.toString();
+      refreshTowerButtons();
+    };
+    
+    multiplayerClient.onCastleHealthUpdate = (health) => {
+      castleHealth = health;
+      updateCastleHealthUI();
+    };
+    
+    multiplayerClient.onRoundStarted = (wave, enemiesCount) => {
+      console.log('Round started:', wave);
+      showToast(`Wave ${wave} starting!`);
+      // Reset ready button
+      const startBtn = document.getElementById('startRound');
+      if (startBtn) {
+        startBtn.textContent = 'Ready (0/?)';
+        startBtn.classList.remove('ready-active');
+      }
+    };
+    
+    multiplayerClient.onReadyStatusChanged = (playerId, isReady, readyCount, totalPlayers) => {
+      const startBtn = document.getElementById('startRound');
+      if (startBtn) {
+        startBtn.textContent = `Ready (${readyCount}/${totalPlayers})`;
+        if (isReady && playerId === multiplayerClient.playerId) {
+          startBtn.classList.add('ready-active');
+        }
+      }
+    };
+    
+    multiplayerClient.onGameOver = (reason) => {
+      showToast(`Game Over: ${reason}`);
+      gameActive = false;
+    };
+    
+    // Connect to server
+    const initData = await multiplayerClient.connect(serverUrl);
+    console.log('Multiplayer initialized:', initData);
+    
+    isMultiplayer = true;
+    
+    // Update gold from server
+    if (initData.gameState) {
+      gold = initData.gameState.gold;
+      if (goldEl) goldEl.textContent = gold.toString();
+      castleHealth = initData.gameState.castleHealth;
+      updateCastleHealthUI();
+    }
+    
+    // Create meshes for existing players
+    if (initData.players) {
+      initData.players.forEach(p => {
+        if (p.id !== multiplayerClient.playerId) {
+          createOtherPlayerMesh(p.id, p.color);
+        }
+      });
+    }
+    
+    // Change the start round button to "Ready"
+    const startBtn = document.getElementById('startRound');
+    if (startBtn) {
+      startBtn.textContent = 'Ready (0/1)';
+      // Remove old event listener by cloning
+      const newBtn = startBtn.cloneNode(true);
+      startBtn.parentNode.replaceChild(newBtn, startBtn);
+      
+      newBtn.addEventListener('click', () => {
+        if (multiplayerClient) {
+          multiplayerClient.toggleReady();
+        }
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize multiplayer:', error);
+    showToast('Failed to connect to multiplayer server');
+    return false;
+  }
+}
+
+// Send player position updates periodically in multiplayer
+let lastPositionUpdate = 0;
+const POSITION_UPDATE_INTERVAL = 50; // ms
+
+function updateMultiplayerPosition() {
+  if (!isMultiplayer || !multiplayerClient || !player) return;
+  
+  const now = Date.now();
+  if (now - lastPositionUpdate < POSITION_UPDATE_INTERVAL) return;
+  
+  lastPositionUpdate = now;
+  multiplayerClient.sendPlayerMove(
+    { x: player.position.x, y: player.position.y, z: player.position.z },
+    { x: player.rotation.x, y: player.rotation.y, z: player.rotation.z }
+  );
+}
+
+// Auto-initialize multiplayer when page loads (comment out for single-player mode)
+// Uncomment the line below to enable multiplayer by default:
+// initMultiplayer().catch(err => console.log('Multiplayer not available, running in single-player mode'));

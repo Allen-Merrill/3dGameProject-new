@@ -214,4 +214,51 @@ canvas {
     background-color: #59ff00; 
     transition: width 0.25s ease;
   }
+
+  /* Multiplayer UI Styles */
+  #multiplayerStatus {
+    display: inline-block;
+    padding: 4px 8px;
+    background: rgba(0,0,0,0.6);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  #connectionStatus {
+    color: #ffaa00;
+  }
+
+  #connectionStatus.connected {
+    color: #00ff00;
+  }
+
+  #connectionStatus.disconnected {
+    color: #ff0000;
+  }
+
+  #serverUrlInput {
+    margin-top: 10px;
+  }
+
+  #serverUrlInput input {
+    padding: 6px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #333;
+    color: white;
+    font-size: 14px;
+  }
+
+  #serverUrlInput button {
+    padding: 6px 12px;
+    margin-left: 4px;
+    font-size: 14px;
+  }
+
+  /* Ready button styling */
+  #startRound.ready-active {
+    background: #4CAF50;
+    color: white;
+    font-weight: bold;
+  }
   
