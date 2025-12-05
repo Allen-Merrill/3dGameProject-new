@@ -1448,6 +1448,10 @@ document.addEventListener('keydown', (e) => {
 
 if (cameraToggleBtn) cameraToggleBtn.addEventListener('click', () => setUsingTopDown(!usingTopDown));
 if (startRoundBtn) startRoundBtn.addEventListener('click', () => {
+  // In multiplayer, this button becomes "Ready" and is replaced
+  // This only works in single-player mode
+  if (isMultiplayer) return;
+  
   if (gameWon) {
     showToast('You already won — reset to play again.');
     return;
@@ -1457,9 +1461,9 @@ if (startRoundBtn) startRoundBtn.addEventListener('click', () => {
   setUsingTopDown(false);
   startWave(6);
 });
-// Keyboard shortcut to start round: Enter or R
+// Keyboard shortcut to start round: Enter or R (single-player only)
 document.addEventListener('keydown', (e) => {
-  if ((e.key === 'Enter' || e.key.toLowerCase() === 'r') && !roundActive) {
+  if ((e.key === 'Enter' || e.key.toLowerCase() === 'r') && !roundActive && !isMultiplayer) {
     if (gameWon) {
       showToast('You already won — reset to play again.');
       return;
@@ -2114,6 +2118,15 @@ async function initMultiplayer(serverUrl = 'http://localhost:3000') {
     multiplayerClient.onRoundStarted = (wave, enemiesCount) => {
       console.log('Round started:', wave);
       showToast(`Wave ${wave} starting!`);
+      
+      // Start the round locally
+      if (!roundActive) {
+        roundActive = true;
+        setUsingTopDown(false);
+        waveNumber = wave;
+        startWave(enemiesCount);
+      }
+      
       // Reset ready button
       const startBtn = document.getElementById('startRound');
       if (startBtn) {
